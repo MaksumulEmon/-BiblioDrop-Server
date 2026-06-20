@@ -96,6 +96,20 @@ async function run() {
         });
 
 
+        // Status  InventoryTableMange
+        app.patch("/librarian/book/status/:id", async (req, res) => {
+            const { id } = req.params;
+            const { status } = req.body;
+
+            const result = await bookCollection.updateOne(
+                { _id: new ObjectId(id) },
+                { $set: { status } }
+            );
+
+            res.send(result);
+        });
+
+
 
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
