@@ -1,7 +1,7 @@
 const express = require('express');
 const dontenv = require('dotenv')
 const cors = require("cors")
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ObjectId, ServerApiVersion, } = require('mongodb');
 dontenv.config()
 
 const uri = process.env.MONGODB_URI
@@ -29,12 +29,41 @@ async function run() {
         const bookCollection = db.collection("books");
 
 
-        // Show All book
+        // Librain all book
         app.get("/librarian/books", async (req, res) => {
             const result = await bookCollection.find().toArray();
+            res.json(result);
+        });
+
+        //  Single librain book
+        app.get("/librarian/:id", async (req, res) => {
+            const { id } = req.params;
+
+            const result = await bookCollection.findOne({
+                _id: new ObjectId(id)
+            });
+
+            res.json(result);
+        });
+
+
+        // Edit Modal
+        app.patch("/librarian/:id", async (req, res) => {
+            const id = req.params.id;
+            const updatedData = req.body;
+
+            const result = await bookCollection.updateOne(
+                { _id: new ObjectId(id) },
+                {
+                    $set: updatedData
+                }
+            );
+
             res.send(result);
         });
 
+
+        
         // Librain Add book
         app.post("/librarian/books", async (req, res) => {
             const books = req.body;
