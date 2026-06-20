@@ -1,6 +1,6 @@
 const express = require('express');
 const dontenv = require('dotenv')
-const cors =  require("cors")
+const cors = require("cors")
 const { MongoClient, ServerApiVersion } = require('mongodb');
 dontenv.config()
 
@@ -24,10 +24,26 @@ const client = new MongoClient(uri, {
 async function run() {
     try {
         await client.connect();
-        const db = client.db("bibliodrop")
-        
 
-        
+        const db = client.db("bibliodrop")
+        const bookCollection = db.collection("books");
+
+
+        // Show All book
+        app.get("/librarian/books", async (req, res) => {
+            const result = await bookCollection.find().toArray();
+            res.send(result);
+        });
+
+        // Librain Add book
+        app.post("/librarian/books", async (req, res) => {
+            const books = req.body;
+            const result = await bookCollection.insertOne(books);
+            res.send(result);
+        });
+
+
+
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
