@@ -62,8 +62,20 @@ async function run() {
             res.send(result);
         });
 
+        // Delete  Rooom
+        app.delete("/librarian/:id", async (req, res) => {
+            const { id } = req.params;
+
+            const result = await bookCollection.deleteOne({
+                _id: new ObjectId(id)
+            });
+
+            res.json(result);
+        });
+
 
         
+
         // Librain Add book
         app.post("/librarian/books", async (req, res) => {
             const books = req.body;
