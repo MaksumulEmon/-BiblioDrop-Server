@@ -74,7 +74,19 @@ async function run() {
         });
 
 
-        
+
+
+        // FeaturedBook
+        app.get('/featured', async (req, res) => {
+            const result = await bookCollection
+                .find()
+                .sort({ _id: -1 })
+                .limit(6)
+                .toArray();
+
+            res.send(result);
+        });
+
 
         // Librain Add book
         app.post("/librarian/books", async (req, res) => {
