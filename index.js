@@ -71,12 +71,6 @@ async function run() {
 
 
         // Librain all book
-        // app.get("/librarian/books", async (req, res) => {
-        //     const result = await bookCollection.find().toArray();
-        //     res.json(result);
-        // });
-
-
         app.get("/librarian/books", async (req, res) => {
             const result = await bookCollection
                 .find()
@@ -113,17 +107,6 @@ async function run() {
 
 
         // Manage invertry
-        // app.get("/librarian/my-books/:userId", async (req, res) => {
-        //     const { userId } = req.params;
-
-        //     const result = await bookCollection.find({
-        //         userId: userId
-        //     }).toArray();
-
-        //     res.send(result);
-        // });
-
-
         app.get("/librarian/my-books/:userId", async (req, res) => {
             const { userId } = req.params;
 
