@@ -35,6 +35,21 @@ async function run() {
             res.json(result);
         });
 
+
+        // Manage invertry
+        app.get("/librarian/my-books/:userId", async (req, res) => {
+            const { userId } = req.params;
+
+            const result = await bookCollection.find({
+                userId: userId
+            }).toArray();
+
+            res.send(result);
+        });
+
+
+
+
         //  Single librain book
         app.get("/librarian/:id", async (req, res) => {
             const { id } = req.params;
@@ -108,6 +123,9 @@ async function run() {
 
             res.send(result);
         });
+
+
+
 
 
 
