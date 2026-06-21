@@ -27,7 +27,7 @@ const verifyToken = async (req, res, next) => {
 
     console.log(authheader)
 
-    if (!authheader || !authheader.startsWith ("Bearer")) {
+    if (!authheader || !authheader.startsWith("Bearer")) {
         return res.status(401).json({ msg: "Unauthorized1" });
     }
 
@@ -38,13 +38,29 @@ const verifyToken = async (req, res, next) => {
 
     try {
         const { payload } = await jwtVerify(token, JKWS)
-        console.log(payload)
+        // console.log(payload)
+        req.user = payload
         next()
     } catch (error) {
         console.log(error)
         return res.status(401).json({ msg: "Unauthorized3" });
     }
 }
+
+
+
+const librainVerify = async (req, res, next) => {
+    const user = req.user;
+    // console.log("user from Librain", user)
+
+    if (user.role !== "librarian") {
+        return res.status(403).json({ msg: "Forbidden" });
+    }
+    next()
+}
+
+
+
 
 async function run() {
     try {
@@ -55,11 +71,20 @@ async function run() {
 
 
         // Librain all book
+        // app.get("/librarian/books", async (req, res) => {
+        //     const result = await bookCollection.find().toArray();
+        //     res.json(result);
+        // });
+
+
         app.get("/librarian/books", async (req, res) => {
-            const result = await bookCollection.find().toArray();
+            const result = await bookCollection
+                .find()
+                .sort({ _id: -1 })
+                .toArray();
+
             res.json(result);
         });
-
 
         app.get("/librarian/books", async (req, res) => {
             const { userId } = req.query;
@@ -155,7 +180,7 @@ async function run() {
 
 
         // Librain Add book
-        app.post("/librarian/books", verifyToken,  async (req, res) => {
+        app.post("/librarian/books", verifyToken, librainVerify, async (req, res) => {
             const token = req.query.token
             console.log(token)
             const books = req.body;
