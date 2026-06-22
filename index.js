@@ -179,7 +179,7 @@ async function run() {
         // FeaturedBook
         app.get('/featured', async (req, res) => {
             const result = await bookCollection
-                .find()
+                .find({ status: "published" })
                 .sort({ _id: -1 })
                 .limit(6)
                 .toArray();
@@ -193,6 +193,7 @@ async function run() {
             const token = req.query.token
             console.log(token)
             const books = req.body;
+            books.status = "pending"; // Enforce status pending
             const result = await bookCollection.insertOne(books);
             res.send(result);
         });
@@ -282,7 +283,9 @@ async function run() {
             try {
                 const result = await bookCollection.find({
                     status: "published"
-                }).toArray();
+                })
+                .sort({ _id: -1 })
+                .toArray();
 
                 res.send(result);
             } catch (error) {
