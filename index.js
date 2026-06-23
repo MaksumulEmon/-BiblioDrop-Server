@@ -86,7 +86,7 @@ async function run() {
         // Librain all book
         app.get("/librarian/books", async (req, res) => {
             const result = await bookCollection
-                .find()
+                .find() 
                 .sort({ _id: -1 })
                 .toArray();
 
@@ -268,6 +268,8 @@ async function run() {
 
 
 
+        // This jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj
+
         app.get("/admin/books", async (req, res) => {
             try {
                 const result = await bookCollection.find().toArray();
@@ -277,7 +279,7 @@ async function run() {
             }
         });
 
-
+// All books showw         -------------------------------------------
 
         app.get("/books", async (req, res) => {
             try {
