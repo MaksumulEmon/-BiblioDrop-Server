@@ -86,7 +86,7 @@ async function run() {
         // Librain all book
         app.get("/librarian/books", async (req, res) => {
             const result = await bookCollection
-                .find() 
+                .find()
                 .sort({ _id: -1 })
                 .toArray();
 
@@ -279,21 +279,36 @@ async function run() {
             }
         });
 
-// All books showw         -------------------------------------------
+        // All books showw         -------------------------------------------
 
         app.get("/books", async (req, res) => {
-            try {
-                const result = await bookCollection.find({
-                    status: "published"
-                })
-                .sort({ _id: -1 })
-                .toArray();
+            const { page = 1, limit = 10 } = req.query;
+            const skip = (Number(page) - 1) * Number(limit)
+            const result = await bookCollection.find({ status: "published" }).skip(skip).limit(Number(limit)).sort({ _id: -1 }).toArray();
 
-                res.send(result);
-            } catch (error) {
-                res.status(500).send({ message: "Failed" });
-            }
+            const totalData = await bookCollection.countDocuments({ status: "published" })
+            const totalPage = Math.ceil(totalData / Number(limit))
+            res.send({ data:result, page: Number(page), totalPage });
+
         });
+
+
+
+        // app.get("/books", async (req, res) => {
+        //     const {page=1,limit=10} = req.query;
+        //     const skip = (Number(page) -1) * Number(limit)
+        //     try {
+        //         const result = await bookCollection.find({
+        //             status: "published"
+        //         })
+        //         .sort({ _id: -1 })
+        //         .toArray();
+
+        //         res.send(result);
+        //     } catch (error) {
+        //         res.status(500).send({ message: "Failed" });
+        //     }
+        // });
 
 
         // ==========================================
@@ -303,7 +318,7 @@ async function run() {
         // 1. Payment Success & Auto-create Delivery
         app.post("/api/payments/confirm", async (req, res) => {
             const { transactionId, userId, userEmail, userName, bookId, amount, address } = req.body;
-            
+
             if (!transactionId || !userId || !bookId) {
                 return res.status(400).json({ error: "Missing required fields" });
             }
