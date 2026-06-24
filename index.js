@@ -282,7 +282,7 @@ async function run() {
         // All books showw         -------------------------------------------
 
         app.get("/books", async (req, res) => {
-            const { page = 1,limit = 10,search = "",category = "",minFee = "",maxFee = "", availability = "",} = req.query;
+            const { page = 1, limit = 10, search = "", category = "", minFee = "", maxFee = "", availability = "", } = req.query;
 
             const skip = (Number(page) - 1) * Number(limit);
             const query = {
@@ -476,6 +476,26 @@ async function run() {
                 res.status(500).json({ error: "Failed to fetch reviews" });
             }
         });
+
+
+
+
+
+        app.get("/reviews/book/:id", async (req, res) => {
+
+            const id = req.params.id;
+
+            const reviews = await reviewCollection
+                .find({
+                    bookId: new ObjectId(id)
+                })
+                .sort({ date: -1 })
+                .toArray();
+
+            res.send(reviews);
+        });
+
+
 
         app.post("/api/reviews", verifyToken, async (req, res) => {
             const { bookId, rating, comment } = req.body;
