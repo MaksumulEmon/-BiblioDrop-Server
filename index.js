@@ -282,15 +282,78 @@ async function run() {
         // All books showw         -------------------------------------------
 
         app.get("/books", async (req, res) => {
-            const { page = 1, limit = 10 } = req.query;
-            const skip = (Number(page) - 1) * Number(limit)
-            const result = await bookCollection.find({ status: "published" }).skip(skip).limit(Number(limit)).sort({ _id: -1 }).toArray();
+            const { page = 1,limit = 10,search = "",category = "",minFee = "",maxFee = "", availability = "",} = req.query;
 
-            const totalData = await bookCollection.countDocuments({ status: "published" })
-            const totalPage = Math.ceil(totalData / Number(limit))
-            res.send({ data:result, page: Number(page), totalPage });
+            const skip = (Number(page) - 1) * Number(limit);
+            const query = {
+                status: "published",
+            };
 
+            // Search By Name
+            if (search) {
+                query.title = {
+                    $regex: search,
+                    $options: "i",
+                };
+            }
+
+            // Category Filter
+            if (category) {
+                query.category = category;
+            }
+
+            // Delivery Fee Filter
+            if (minFee || maxFee) {
+                query.deliveryFee = {};
+
+                if (minFee) {
+                    query.deliveryFee.$gte = Number(minFee);
+                }
+
+                if (maxFee) {
+                    query.deliveryFee.$lte = Number(maxFee);
+                }
+            }
+
+            // Availability Filter
+            if (availability) {
+                query.availability = availability;
+                // example: available / unavailable
+            }
+
+            const result = await bookCollection
+                .find(query)
+                .sort({ _id: -1 })
+                .skip(skip)
+                .limit(Number(limit))
+                .toArray();
+
+            const totalData = await bookCollection.countDocuments(query);
+
+            const totalPage = Math.ceil(
+                totalData / Number(limit)
+            );
+
+            res.send({
+                data: result,
+                page: Number(page),
+                totalPage,
+            });
         });
+
+
+
+
+        // app.get("/books", async (req, res) => {
+        //     const { page = 1, limit = 10 } = req.query;
+        //     const skip = (Number(page) - 1) * Number(limit)
+        //     const result = await bookCollection.find({ status: "published" }).skip(skip).limit(Number(limit)).sort({ _id: -1 }).toArray();
+
+        //     const totalData = await bookCollection.countDocuments({ status: "published" })
+        //     const totalPage = Math.ceil(totalData / Number(limit))
+        //     res.send({ data:result, page: Number(page), totalPage });
+
+        // });
 
 
 
