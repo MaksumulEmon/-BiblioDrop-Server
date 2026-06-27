@@ -379,6 +379,24 @@ async function run() {
         // ==========================================
 
         // 1. Payment Success & Auto-create Delivery
+
+        app.get("/payments/check/:bookId/:userId", async (req, res) => {
+
+            const { bookId, userId } = req.params;
+
+            const payment = await paymentCollection.findOne({
+                bookId: new ObjectId(bookId),
+                userId
+            });
+
+            res.send({
+                purchased: !!payment
+            });
+        });
+
+
+
+
         app.post("/api/payments/confirm", async (req, res) => {
             const { transactionId, userId, userEmail, userName, bookId, amount, address } = req.body;
 
