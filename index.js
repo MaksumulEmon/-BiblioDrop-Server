@@ -3,11 +3,13 @@ const dontenv = require('dotenv')
 const cors = require("cors")
 const { MongoClient, ObjectId, ServerApiVersion, } = require('mongodb');
 const { createRemoteJWKSet, jwtVerify } = require('jose-cjs');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 dontenv.config()
 
 const uri = process.env.MONGODB_URI
 const app = express()
-const port = process.env.PORT
+const port = process.env.PORT || 5000
+const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 
 app.use(cors());
 app.use(express.json())
@@ -304,15 +306,23 @@ async function run() {
 
             // Delivery Fee Filter
             if (minFee || maxFee) {
-                query.deliveryFee = {};
+                const numConditions = {};
+                const strConditions = {};
 
                 if (minFee) {
-                    query.deliveryFee.$gte = Number(minFee);
+                    numConditions.$gte = Number(minFee);
+                    strConditions.$gte = String(Number(minFee));
                 }
 
                 if (maxFee) {
-                    query.deliveryFee.$lte = Number(maxFee);
+                    numConditions.$lte = Number(maxFee);
+                    strConditions.$lte = String(Number(maxFee));
                 }
+
+                query.$or = [
+                    { deliveryFee: numConditions },
+                    { deliveryFee: strConditions }
+                ];
             }
 
             // Availability Filter
@@ -764,6 +774,206 @@ async function run() {
                 res.json({ payments, deliveries, usersCount, booksCount });
             } catch (err) {
                 res.status(500).json({ error: "Failed to fetch admin stats" });
+            }
+        });
+
+        // 5. AI BiblioBot Recommendation Endpoint
+        app.post("/api/ai/recommend", async (req, res) => {
+            const { message, history } = req.body;
+
+            if (!message || typeof message !== "string") {
+                return res.status(400).json({ error: "Message is required" });
+            }
+
+            try {
+                // Fetch published books from MongoDB for ground-truth catalog context
+                const publishedBooks = await bookCollection
+                    .find({ status: "published" })
+                    .project({
+                        title: 1,
+                        author: 1,
+                        category: 1,
+                        deliveryFee: 1,
+                        description: 1,
+                        image: 1
+                    })
+                    .limit(30)
+                    .toArray();
+
+                if (!publishedBooks.length) {
+                    return res.json({
+                        reply: "Our library shelves are currently being updated! Please check back shortly for available books.",
+                        books: [],
+                        suggestedFollowUps: ["Check back later", "Browse all categories"]
+                    });
+                }
+
+                const catalogSummary = publishedBooks.map(b => ({
+                    id: b._id.toString(),
+                    title: b.title,
+                    author: b.author || "Unknown",
+                    category: b.category || "General",
+                    deliveryFee: b.deliveryFee || 0,
+                    description: (b.description || "").slice(0, 160)
+                }));
+
+                let replyText = "";
+                let recommendedIds = [];
+                let followUps = [];
+
+                if (genAI && process.env.GEMINI_API_KEY) {
+                    try {
+                        const model = genAI.getGenerativeModel({
+                            model: "gemini-1.5-flash",
+                            generationConfig: {
+                                temperature: 0.7,
+                            }
+                        });
+
+                        const prompt = `You are "BiblioBot", a warm, witty, and knowledgeable AI book concierge and assistant for Bibliodrop, an online book delivery platform.
+Your identity: Your name is BiblioBot! You help readers discover books, answer questions about yourself, explain how Bibliodrop works (delivering books right to readers' doorsteps), and suggest titles based on mood, interests, or budget.
+
+CURRENT AVAILABLE CATALOG IN BIBLIODROP:
+${JSON.stringify(catalogSummary, null, 2)}
+
+User request: "${message}"
+
+INSTRUCTIONS:
+1. If the user asks general or conversational questions (e.g., "what is your name?", "who are you?", "hi", "how are you?", "what can you do?"):
+   - Directly and warmly answer their question (e.g. introduce yourself as BiblioBot, the Bibliodrop reading concierge).
+   - "recommendedBookIds" can be an empty array [] or include 1-2 featured books if you want to invite them to read.
+2. If the user asks for books, recommendations, genres, moods, authors, or delivery pricing/ranges:
+   - If a delivery range or limit is mentioned (e.g., 'delivery range 2 to 6', 'between $2 and $5', 'under $5 fee'), prioritize and filter books whose deliveryFee fits within that range, and clearly state their delivery fees in the reply.
+   - Recommend 1 to 3 best matching books from the catalog above.
+   - Explain why in 2-3 friendly sentences.
+3. Return your answer as a raw JSON object ONLY (no markdown outside JSON):
+{
+  "reply": "Your friendly, conversational response answering their question directly.",
+  "recommendedBookIds": ["id1", "id2"],
+  "suggestedFollowUps": ["Quick suggestion 1", "Quick suggestion 2", "Quick suggestion 3"]
+}`;
+
+                        const result = await model.generateContent(prompt);
+                        const rawText = result.response.text().trim();
+
+                        // Clean potential markdown code fences ```json ... ```
+                        const cleaned = rawText.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+                        const parsed = JSON.parse(cleaned);
+
+                        replyText = parsed.reply || "";
+                        recommendedIds = Array.isArray(parsed.recommendedBookIds) ? parsed.recommendedBookIds : [];
+                        followUps = Array.isArray(parsed.suggestedFollowUps) ? parsed.suggestedFollowUps : [];
+                    } catch (aiErr) {
+                        console.warn("Gemini API call note (using fallback):", aiErr.message);
+                    }
+                }
+
+                // Fallback heuristic if AI did not return a response
+                if (!replyText) {
+                    const queryLower = message.toLowerCase();
+
+                    // 1. Check conversational / identity intents
+                    if (queryLower.includes("your name") || queryLower.includes("who are you")) {
+                        replyText = "I'm BiblioBot, your personal AI library concierge at Bibliodrop! I can help you discover books by mood, genre, author, or find titles within any delivery fee range.";
+                        recommendedIds = [];
+                        followUps = [
+                            "Show books under $5 delivery",
+                            "Recommend an exciting fiction book",
+                            "Books between $2 and $6 delivery"
+                        ];
+                    } else if (queryLower.includes("hello") || queryLower.includes("hi") || queryLower.includes("hey")) {
+                        replyText = "Hello! I'm BiblioBot, your reading guide. What kind of book or delivery fee range are you looking for today?";
+                        recommendedIds = publishedBooks.slice(0, 2).map(b => b._id.toString());
+                        followUps = [
+                            "Recommend a quick read",
+                            "Show books under $5 delivery",
+                            "Suggest popular books"
+                        ];
+                    } else {
+                        // 2. Check for delivery fee range patterns like "between 2 and 6", "range 1 to 5", "under 5", etc.
+                        let minFeeReq = null;
+                        let maxFeeReq = null;
+
+                        const rangeMatch = queryLower.match(/(?:between|range|from)?\s*\$?(\d+(?:\.\d+)?)\s*(?:to|-|and)\s*\$?(\d+(?:\.\d+)?)/i);
+                        const underMatch = queryLower.match(/(?:under|below|less than|max)\s*\$?(\d+(?:\.\d+)?)/i);
+                        const feeWord = queryLower.includes("fee") || queryLower.includes("delivery") || queryLower.includes("cheap");
+
+                        if (rangeMatch) {
+                            minFeeReq = Number(rangeMatch[1]);
+                            maxFeeReq = Number(rangeMatch[2]);
+                        } else if (underMatch) {
+                            minFeeReq = 0;
+                            maxFeeReq = Number(underMatch[1]);
+                        } else if (feeWord && queryLower.includes("cheap")) {
+                            minFeeReq = 0;
+                            maxFeeReq = 5;
+                        }
+
+                        let rangeBooks = [];
+                        if (minFeeReq !== null || maxFeeReq !== null) {
+                            rangeBooks = publishedBooks.filter(b => {
+                                const fee = Number(b.deliveryFee || 0);
+                                const matchMin = minFeeReq !== null ? fee >= minFeeReq : true;
+                                const matchMax = maxFeeReq !== null ? fee <= maxFeeReq : true;
+                                return matchMin && matchMax;
+                            });
+                        }
+
+                        const matchedByQuery = publishedBooks.filter(b => {
+                            const titleMatch = b.title && queryLower.includes(b.title.toLowerCase());
+                            const catMatch = b.category && queryLower.includes(b.category.toLowerCase());
+                            const authorMatch = b.author && queryLower.includes(b.author.toLowerCase());
+                            const descMatch = b.description && b.description.toLowerCase().split(/\s+/).some(w => w.length > 3 && queryLower.includes(w));
+                            return titleMatch || catMatch || authorMatch || descMatch;
+                        });
+
+                        if (rangeBooks.length > 0) {
+                            const combined = rangeBooks.filter(b => matchedByQuery.includes(b));
+                            const selected = combined.length > 0 ? combined.slice(0, 3) : rangeBooks.slice(0, 3);
+                            recommendedIds = selected.map(b => b._id.toString());
+                            replyText = `I found these books with delivery fees in your requested range ($${minFeeReq ?? 0} - $${maxFeeReq ?? "any"}):`;
+                            followUps = [
+                                "Show lowest delivery fee books",
+                                "Fiction books in this range",
+                                "Browse all categories"
+                            ];
+                        } else if (matchedByQuery.length > 0) {
+                            const selected = matchedByQuery.slice(0, 3);
+                            recommendedIds = selected.map(b => b._id.toString());
+                            replyText = "I found these fantastic books from our collection that match your search:";
+                            followUps = [
+                                "Show books with lowest delivery fee",
+                                "Recommend an exciting fiction read",
+                                "Show academic & science books"
+                            ];
+                        } else {
+                            const selected = publishedBooks.slice(0, 2);
+                            recommendedIds = selected.map(b => b._id.toString());
+                            replyText = "Here are some popular, highly-recommended books currently available for delivery on Bibliodrop:";
+                            followUps = [
+                                "Books under $5 delivery",
+                                "Recommend a mystery novel",
+                                "Tell me what's popular"
+                            ];
+                        }
+                    }
+                }
+
+                // Attach full book objects for the matched IDs
+                const matchedBooks = publishedBooks.filter(b => recommendedIds.includes(b._id.toString()));
+
+                res.json({
+                    reply: replyText,
+                    books: matchedBooks,
+                    suggestedFollowUps: followUps.length > 0 ? followUps : [
+                        "Fiction books under $5",
+                        "Tell me what's popular",
+                        "Books for learning"
+                    ]
+                });
+            } catch (err) {
+                console.error("BiblioBot recommend error:", err);
+                res.status(500).json({ error: "Failed to process recommendation" });
             }
         });
 
